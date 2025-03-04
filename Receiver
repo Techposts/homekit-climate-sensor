@@ -122,7 +122,7 @@ void setup() {
       new Characteristic::Name("Remote AHT10");
     
     // Create the remote sensor and specify the sender's MAC address
-    new RemoteSensor("AHT10 Sensor", "D8:3B:DA:34:CD:C4");  // Use your actual sender MAC
+    new RemoteSensor("AHT10 Sensor", "D0:30:D0:30:C0:C0");  // Use your actual sender MAC
 }
 
 void loop() {
