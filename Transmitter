@@ -42,7 +42,7 @@ void setup() {
   
   // Initialize SpanPoint with the receiver's MAC address
   // sendSize=sizeof(sensor_data), recvSize=0, channel=1
-  SpanPoint *mainDevice = new SpanPoint("D8:3B:DA:34:B0:90", sizeof(sensor_data), 0, 1);
+  SpanPoint *mainDevice = new SpanPoint("D0:30:D0:30:B0:90", sizeof(sensor_data), 0, 1);
   
   // Allow sensor time to stabilize\
   delay(2000);
