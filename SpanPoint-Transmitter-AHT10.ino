@@ -1,0 +1,107 @@
+#include "HomeSpan.h"
+#include <Adafruit_AHTX0.h>
+#include <Wire.h>
+
+#define AHTPIN 1       // I2C SDA pin (adjust based on your specific board)
+#define SLEEP_TIME 20  // Deep sleep time in seconds
+
+// Structure for sensor data - must match receiver's structure
+struct sensor_data {
+  float temperature;
+  float humidity;
+  int batteryLevel;
+};
+
+// Create AHT10 sensor object
+Adafruit_AHTX0 aht;
+
+void setup() {
+  // Set CPU to lower frequency to save power
+  setCpuFrequencyMhz(80);
+  
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("\nAHT10 Remote Sensor Starting...");
+  
+  // Initialize I2C communication
+  Wire.begin(3, 1);  // SDA pin 3, SCL pin 1
+  
+  // Check if AHT10 sensor is found
+  if (!aht.begin()) {
+    Serial.println("Failed to find AHT10 sensor!");
+    // Handle sensor initialization failure
+    esp_deep_sleep_start();
+  }
+  
+  // Set device as a Wi-Fi Station
+  WiFi.mode(WIFI_STA);
+  
+  // Print MAC address for configuration
+  Serial.print("Remote Sensor MAC Address: ");
+  Serial.println(WiFi.macAddress());
+  
+  // Initialize SpanPoint with the receiver's MAC address
+  // sendSize=sizeof(sensor_data), recvSize=0, channel=1
+  SpanPoint *mainDevice = new SpanPoint("D8:3B:DA:34:B0:90", sizeof(sensor_data), 0, 1);
+  
+  // Allow sensor time to stabilize\
+  delay(2000);
+  
+  // Read sensor data
+  sensors_event_t humidity, temp;
+  aht.getEvent(&humidity, &temp);
+  
+  sensor_data sensorData;
+  sensorData.temperature = temp.temperature;
+  sensorData.humidity = humidity.relative_humidity;
+  
+  // Read battery level (example - adjust for your hardware)
+  int batteryRaw = analogRead(A0);
+  sensorData.batteryLevel = map(batteryRaw, 0, 4095, 0, 100);
+  
+  // Print readings for debugging
+  Serial.print("Temperature: ");
+  Serial.print(sensorData.temperature);
+  Serial.println(" °C");
+  
+  Serial.print("Humidity: ");
+  Serial.print(sensorData.humidity);
+  Serial.println(" %");
+  
+  Serial.print("Battery: ");
+  Serial.print(sensorData.batteryLevel);
+  Serial.println(" %");
+  
+  // Check if readings are valid
+  if (isnan(sensorData.temperature) || isnan(sensorData.humidity)) {
+    Serial.println("Failed to read from AHT10 sensor!");
+  } else {
+    // Send data to main device
+    boolean success = mainDevice->send(&sensorData);
+    Serial.print("Send data update: ");
+    Serial.println(success ? "Success" : "Failed");
+    
+    // Try again if failed the first time
+    if (!success) {
+      delay(500);
+      success = mainDevice->send(&sensorData);
+      Serial.print("Second attempt: ");
+      Serial.println(success ? "Success" : "Failed");
+    }
+  }
+  
+  // Wait a moment to ensure transmission completes
+  delay(200);
+  
+  // Go to deep sleep
+  Serial.print("Going to deep sleep for ");
+  Serial.print(SLEEP_TIME);
+  Serial.println(" seconds");
+  Serial.flush();
+  esp_sleep_enable_timer_wakeup(SLEEP_TIME * 1000000); // Convert to microseconds
+  esp_deep_sleep_start();
+}
+
+void loop() {
+  // This won't run due to deep sleep
+}

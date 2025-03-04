@@ -1,0 +1,130 @@
+#include "HomeSpan.h"
+
+// Structure for sensor data that will be received
+struct sensor_data {
+  float temperature;
+  float humidity;
+  int batteryLevel;
+};
+
+// Remote sensor implementation following official example
+struct RemoteSensor : Service::TemperatureSensor {
+  
+  SpanCharacteristic *temp;           // Temperature characteristic
+  SpanCharacteristic *tempFault;      // Temperature fault status
+  
+  SpanService *humService;            // Humidity service
+  SpanCharacteristic *hum;            // Humidity characteristic
+  SpanCharacteristic *humFault;       // Humidity fault status
+  
+  SpanService *batService;            // Battery service
+  SpanCharacteristic *batLevel;       // Battery level
+  SpanCharacteristic *batLow;         // Low battery status
+  
+  SpanPoint *sensorPoint;             // SpanPoint for communication
+  const char *sensorName;             // Name of this sensor
+  sensor_data sensorData;             // Data structure for incoming data
+  
+  // Constructor
+  RemoteSensor(const char *name, const char *macAddress) : Service::TemperatureSensor() {
+    sensorName = name;
+    
+    // Configure Temperature Service (this service)
+    temp = new Characteristic::CurrentTemperature(20.0);
+    temp->setRange(-50, 100);
+    tempFault = new Characteristic::StatusFault(1);  // Start with fault
+    new Characteristic::Name(name);
+    
+    // Create Humidity Service
+    humService = new Service::HumiditySensor();
+      hum = (new Characteristic::CurrentRelativeHumidity(50.0))->setRange(0, 100);
+      humFault = new Characteristic::StatusFault(1);
+      
+    // Create Battery Service  
+    batService = new Service::BatteryService();
+      batLevel = new Characteristic::BatteryLevel(100);
+      batLow = new Characteristic::StatusLowBattery(0);
+      new Characteristic::ChargingState(0);
+      
+    // Initialize SpanPoint with the sender's MAC address
+    // sendSize=0 (we don't send), recvSize=sizeof(sensor_data), channel=1
+    sensorPoint = new SpanPoint(macAddress, 0, sizeof(sensor_data), 1);
+    
+    LOG1("RemoteSensor '%s' created. Waiting for data from %s\n", name, macAddress);
+  }
+  
+  // The loop method will be called repeatedly by HomeSpan
+  void loop() {
+    // Check if there is data from the remote sensor
+    if (sensorPoint->get(&sensorData)) {
+      // Update Temperature
+      temp->setVal(sensorData.temperature);
+      tempFault->setVal(0);  // Clear fault
+      
+      // Update Humidity
+      hum->setVal(sensorData.humidity);
+      humFault->setVal(0);  // Clear fault
+      
+      // Update Battery
+      batLevel->setVal(sensorData.batteryLevel);
+      
+      // Set Low Battery status if needed
+      if (sensorData.batteryLevel <= 20) {
+        batLow->setVal(1);  // Low battery
+      } else {
+        batLow->setVal(0);  // Normal battery
+      }
+      
+      LOG1("Sensor '%s' update: Temp=%0.1f°C, Humidity=%0.1f%%, Battery=%d%%\n", 
+           sensorName, sensorData.temperature, sensorData.humidity, sensorData.batteryLevel);
+    } 
+    else if (sensorPoint->time() > 300000 && !tempFault->getVal()) {
+      // If no data received for 5 minutes and not already in fault state
+      tempFault->setVal(1);  // Set fault states
+      humFault->setVal(1);
+      LOG1("Sensor '%s' fault: No data received for 5+ minutes\n", sensorName);
+    }
+  }
+};
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Set logging level and configure HomeSpan
+  homeSpan.setLogLevel(2);  // More detailed logging
+  homeSpan.setStatusPin(2);
+  homeSpan.setControlPin(0);
+  homeSpan.begin(Category::Bridges, "AHT10 Sensor Hub");
+  
+  // Print MAC Address for reference
+  Serial.print("Main Device MAC Address: ");
+  Serial.println(WiFi.macAddress());
+  
+  // Create bridge accessory
+  new SpanAccessory();  
+    new Service::AccessoryInformation();
+      new Characteristic::Identify(); 
+      new Characteristic::Manufacturer("DIY - TechPosts");
+      new Characteristic::SerialNumber("HS123456");
+      new Characteristic::Model("ESP32 HomeSpan Hub");
+      new Characteristic::FirmwareRevision("1.0");
+      new Characteristic::Name("Sensor Hub");
+  
+  // Create sensor accessory with the remote device's MAC address
+  new SpanAccessory();
+    new Service::AccessoryInformation();
+      new Characteristic::Identify();
+      new Characteristic::Manufacturer("DIY");
+      new Characteristic::SerialNumber("AHT10-001");
+      new Characteristic::Model("ESP32 AHT10 Remote Sensor");
+      new Characteristic::FirmwareRevision("1.0");
+      new Characteristic::Name("Remote AHT10");
+    
+    // Create the remote sensor and specify the sender's MAC address
+    new RemoteSensor("AHT10 Sensor", "D8:3B:DA:34:CD:C4");  // Use your actual sender MAC
+}
+
+void loop() {
+  homeSpan.poll();  // This will call all service loop() methods
+}
