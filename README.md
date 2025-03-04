@@ -22,8 +22,8 @@ ESP32-C3 (Transmitter)    AHT10 Sensor
 ----------------------    ------------
 3.3V                     VCC
 GND                      GND
-GPIO8 (SDA)              SDA
-GPIO9 (SCL)              SCL
+GPI03 (SDA)              SDA
+GPIO1 (SCL)              SCL
 ```
 
 ## Installation & Setup
